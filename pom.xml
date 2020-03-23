@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>guru.springframework</groupId>
 	<artifactId>spring-boot-docker</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
+	<version>0.0.3-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>spring-boot-docker</name>
@@ -16,21 +15,28 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>2.2.5.RELEASE</version>
-		<relativePath />
-		<!--docker.image.prefix>alvieira</docker.image.prefix> <docker.image.name>spring-boot-docker</docker.image.name -->
+		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<java.version>11</java.version>
+
+		<!--set this to your docker acct name-->
+		<docker.image.prefix>alvieira</docker.image.prefix>
+
+		<!--Set to name of project-->
+		<docker.image.name>spring-boot-docker</docker.image.name>
+
+        <docker.startParallel>true</docker.startParallel>
 	</properties>
 
 	<dependencies>
-		<dependency>
-			<groupId>guru.springframework</groupId>
-			<artifactId>page-view-client</artifactId>
-			<version>0.0.4-SNAPSHOT</version>
-		</dependency>
+        <dependency>
+            <groupId>guru.springframework</groupId>
+            <artifactId>page-view-client</artifactId>
+            <version>0.0.4-SNAPSHOT</version>
+        </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-thymeleaf</artifactId>
@@ -39,20 +45,19 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
-
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>
 		</dependency>
 
-		<!--testing deps -->
+		<!--testing deps-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
-
+	
 	<build>
 		<plugins>
 			<plugin>
@@ -66,17 +71,17 @@
 
 				<configuration>
 
-					<!--<dockerHost>http://127.0.0.1:2375</dockerHost> -->
-					<dockerHost>unix:///var/run/docker.sock</dockerHost>
+                    <!--<dockerHost>http://127.0.0.1:2375</dockerHost>-->
+                    <dockerHost>unix:///var/run/docker.sock</dockerHost>
 
-					<verbose>true</verbose>
+                    <verbose>true</verbose>
 					<images>
 						<image>
-							<name>alvieira/spring-boot-docker</name>
+							<name>${docker.image.prefix}/${docker.image.name}</name>
 							<build>
 								<dockerFileDir>${project.basedir}/target/dockerfile/</dockerFileDir>
 
-								<!--copies artficact to docker build dir in target -->
+                                <!--copies artficact to docker build dir in target-->
 								<assembly>
 									<descriptorRef>artifact</descriptorRef>
 								</assembly>
@@ -85,39 +90,155 @@
 									<tag>${project.version}</tag>
 								</tags>
 							</build>
+                            <run>
+                                <ports>
+                                    <port>8080:8080</port>
+                                </ports>
+                                <links>
+                                    <link>myrabbitmq:rabbitmq</link>
+                                </links>
+                                <env>
+                                    <SPRING_RABBITMQ_HOST>rabbitmq</SPRING_RABBITMQ_HOST>
+                                </env>
+                                <dependsOn>
+                                    <container>myrabbitmq</container>
+                                    <container>pageviewservice</container>
+                                </dependsOn>
+                            </run>
 						</image>
+                        <!--mysql container-->
+						<image>
+							<name>mysql</name>
+                            <alias>mysqldb</alias>
+							<run>
+                                <!--expose port for dn-->
+								<ports>
+                                    <port>3306:3306</port>
+                                </ports>
+                                <!--set env prams for mysql image-->
+                                <env>
+                                    <MYSQL_DATABASE>pageviewservice</MYSQL_DATABASE>
+                                    <MYSQL_ALLOW_EMPTY_PASSWORD>yes</MYSQL_ALLOW_EMPTY_PASSWORD>
+                                </env>
+                                <!--wait for db to start-->
+                                <wait>
+                                    <time>180000</time>
+                                </wait>
+							</run>
+						</image>
+                        <!--rabbit container-->
+                        <image>
+                            <name>rabbitmq</name>
+                            <alias>myrabbitmq</alias>
+                            <run>
+                                <ports>
+                                    <port>5671</port>
+                                    <port>5672</port>
+                                    <port>4369</port>
+                                    <port>25672</port>
+                                </ports>
+                                <!--wait for db to start-->
+                                <wait>
+                                    <time>10000</time>
+                                </wait>
+                            </run>
+                        </image>
+
+                        <!--docker run &#45;&#45;name pageviewservice -p 8081:8081 &#45;&#45;link rabbitmq:rabbitmq &#45;&#45;link mysqldb:mysqldb-->
+                        <!-- -e SPRING_DATASOURCE_URL=jdbc:mysql://mysqldb:3306/pageviewservice -e SPRING_PROFILES_ACTIVE=mysql-->
+                        <!-- -e SPRING_RABBITMQ_HOST=rabbitmq springframeworkguru/pageviewservice-->
+                        <image>
+                            <name>alvieira/pageviewservice</name>
+                            <alias>pageviewservice</alias>
+                            <run>
+                                <ports>
+                                    <port>8081:8081</port>
+                                </ports>
+                                <links>
+                                    <link>myrabbitmq:rabbitmq</link>
+                                    <link>mysqldb:mysqldb</link>
+                                </links>
+                                <env>
+                                    <SPRING_DATASOURCE_URL>jdbc:mysql://mysqldb:3306/pageviewservice</SPRING_DATASOURCE_URL>
+                                    <SPRING_PROFILES_ACTIVE>mysql</SPRING_PROFILES_ACTIVE>
+                                    <SPRING_RABBITMQ_HOST>rabbitmq</SPRING_RABBITMQ_HOST>
+                                </env>
+                                <dependsOn>
+                                    <container>myrabbitmq</container>
+                                    <container>mysql</container>
+                                </dependsOn>
+                                <!-- wait>
+                                    <http>
+                                        <url>http://localhost:8081/health</url>
+                                        <method>GET</method>
+                                        <status>200..399</status>
+                                    </http>
+                                    <time>75000</time>
+                                </wait> -->
+                            </run>
+                        </image>
 					</images>
 				</configuration>
+                <executions>
+                    <execution>
+                        <id>start</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <!-- "build" should be used to create the images with the
+                                 artifact -->
+                            <goal>build</goal>
+                            <goal>start</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>stop</id>
+                        <phase>post-integration-test</phase>
+                        <goals>
+                            <goal>stop</goal>
+                        </goals>
+                    </execution>
+                </executions>
 			</plugin>
-			<plugin>
-				<groupId>org.codehaus.gmavenplus</groupId>
-				<artifactId>gmavenplus-plugin</artifactId>
-				<version>1.5</version>
-				<executions>
-					<execution>
-						<phase>prepare-package</phase>
-						<goals>
-							<goal>execute</goal>
-						</goals>
-					</execution>
-				</executions>
-				<configuration>
-					<scripts>
-						<script>file:///${project.basedir}/src/main/scripts/BuildDockerfile.groovy</script>
-					</scripts>
-				</configuration>
-				<dependencies>
-					<dependency>
-						<groupId>org.codehaus.groovy</groupId>
-						<artifactId>groovy-all</artifactId>
-						<!-- any version of Groovy \>= 1.5.0 should work here -->
-						<version>2.4.8</version>
-						<scope>runtime</scope>
-					</dependency>
-				</dependencies>
-			</plugin>
+            <plugin>
+                <groupId>org.codehaus.gmavenplus</groupId>
+                <artifactId>gmavenplus-plugin</artifactId>
+                <version>1.5</version>
+                <executions>
+                    <execution>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <scripts>
+                        <script>file:///${project.basedir}/src/main/scripts/BuildDockerfile.groovy</script>
+                    </scripts>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.codehaus.groovy</groupId>
+                        <artifactId>groovy-all</artifactId>
+                        <!-- any version of Groovy \>= 1.5.0 should work here -->
+                        <version>2.4.8</version>
+                        <scope>runtime</scope>
+                    </dependency>
+                </dependencies>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>integration-test</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
 		</plugins>
 	</build>
-
-
 </project>
