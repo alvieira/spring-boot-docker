@@ -1,0 +1,87 @@
+version: '3.1'
+
+services:
+  mysqldb:
+    image: mysql
+    restart: always
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_DATABASE: pageviewservice
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_ROOT_PASSWORD_FILE: '/run/secrets/mysql.txt'
+    networks:
+      - database_net
+    deploy:
+      replicas: 1
+    secrets:
+      - mysql.txt
+
+  rabbitmq:
+    image: rabbitmq
+    restart: always
+    ports:
+      - "5671:5671"
+      - "5672:5672"
+      - "4369:4369"
+      - "25672:25672"
+    networks:
+      - rabbit_net
+    deploy:
+      replicas: 1
+
+  pageviewservice:
+    image: springframeworkguru/pageviewservice
+    ports:
+      - "8081:8081"
+    restart: always
+    depends_on:
+      - mysqldb
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: 'jdbc:mysql://mysqldb:3306/pageviewservice'
+      SPRING_PROFILES_ACTIVE: 'mysql'
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_CONFIG_LOCATION: 'file:run/secrets/'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - rabbit_net
+      - database_net
+    deploy:
+      replicas: 3
+    secrets:
+      - application.properties
+
+  springbootdocker:
+    image: springframeworkguru/springbootdocker
+    ports:
+      - "8080:8080"
+    restart: always
+    depends_on:
+      - rabbitmq
+      - pageviewservice
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - rabbit_net
+    deploy:
+      replicas: 3
+networks:
+  rabbit_net:
+    driver: overlay
+  database_net:
+    driver: overlay
+secrets:
+  mysql.txt:
+    external: true
+  application.properties:
+    file: ./application.properties
